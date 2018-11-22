@@ -4,6 +4,7 @@ extern crate futures;
 #[macro_use]
 extern crate log;
 extern crate env_logger;
+extern crate url;
 
 use std::collections::HashMap;
 use std::io;
@@ -47,17 +48,19 @@ struct NewMessage{
 }
 
 fn parse_form(form_chunk: Chunk) -> FutureResult<NewMessage, hyper::Error>{
-    futures::future::ok(NewMessage{
         let mut form = url::form_urlencoded::parse(form_chunk.as_ref())
             .into_owned()
-            .collect::HashMap<<String,String>>();
+            .collect::<HashMap<String,String>>();
 
         if let Some(message) = form.remove("message"){
-            let username = form.remove("username").unwrap_or(String::from("anonymous"))
+            let username = form.remove("username").unwrap_or(String::from("anonymous"));
+            futures::future::ok(NewMessage{
+                username,
+                message,
+            })
+        }else{
+            futures::future::err(hyper::Error::from(io::Error::new(io::ErrorKind::InvalidInput, "missing field message",)))
         }
-        username: String::new(),
-        message: String::new(),
-    })
 }
 
 fn write_to_db(entry: NewMessage) -> FutureResult<i64, hyper::Error>{
