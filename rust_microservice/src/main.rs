@@ -22,6 +22,10 @@ use hyper::server::{Request, Response, Service};
 use futures::Stream;
 use futures::future::{Future, FutureResult};
 
+struct TimeRange{
+    before: Option<i64>,
+    after: Option<i64>,
+}
 struct Microservice;
 
 impl Service for Microservice{
@@ -40,6 +44,20 @@ impl Service for Microservice{
                     .and_then(write_to_db)
                     .then(make_post_response);
                 Box::new(future)
+            },
+            (&Get, "/") => {
+                let time_range = match request.query() {
+                    Some(query) => parse_query(query),
+                    None => Ok(time_range{
+                        before: None,
+                        after: None,
+                    }),
+                };
+                let response = match time_range{
+                    Ok(time_range) => make_get_response(query_db(time_range)),
+                    Err(error) => make_error_response(&error),
+                }
+                Box::new(response)
             }
             _ => Box::new(futures::future::ok(
                 Response::new().with_status(StatusCode::NotFound),
@@ -51,6 +69,29 @@ impl Service for Microservice{
 struct NewMessage{
     username: String,
     message: String,
+}
+
+fn parse_query(query: &str) -> Result<TimeRange, String>{
+    let args = url::form_urlencoded::parse(&query.as_bytes())
+        .into_owned()
+        .collect::<HashMap<String,String>>();
+    
+    let before = args.get("before").map(|value| value.parse::<i64>());
+    if let Some(ref result) = before{
+        if let Err(ref error) = *result{
+            return Err(format!("error parsing 'before': {}", error));
+        }
+    }
+    let after = args.get("after").map(|value| value.parse::<i64>());
+    if let Some(ref result) = after{
+        if let Err(ref error) = *result{
+            return Err(format!("error parsing 'after': {}", error));
+        }
+    }
+    Ok(TimeRange{
+        before: before.map(|b| b.unwrap()),
+        after: after.map(|a| a.unwrap()),
+    })
 }
 
 fn parse_form(form_chunk: Chunk) -> FutureResult<NewMessage, hyper::Error>{
@@ -95,6 +136,20 @@ fn make_error_response(error_message: &str) -> FutureResult<hyper::Response, hyp
         .with_header(ContentLength(payload.len() as u64))
         .with_header(ContentType::json())
         .with_body(payload);
+    debug!("{:?}", response);
+    futures::future::ok(response)
+}
+
+fn make_get_response(messages: Option<Vec<Message>>) -> FutureResult<hyper::Response, hyper::Error>{
+    let response = match messages{
+        Some(messages) => {
+            let body = render_page(messages);
+            Response::new()
+                .with_header(ContentLength(body.len() as u64))
+                .with_body(body)
+        }
+        None => Response::new().with_status(StatusCode::InternalServerError)
+    };
     debug!("{:?}", response);
     futures::future::ok(response)
 }
