@@ -2,15 +2,21 @@ extern crate hyper;
 extern crate futures;
 
 #[macro_use]
+extern crate serde_json;
 extern crate log;
 extern crate env_logger;
 extern crate url;
 
 use std::collections::HashMap;
+use std::error::Error;
 use std::io;
+
+use log::{debug, info};
+use serde_json::json;
 
 use hyper::{Chunk, StatusCode};
 use hyper::Method::{Get, Post};
+use hyper::header::{ContentType, ContentLength};
 use hyper::server::{Request, Response, Service};
 
 use futures::Stream;
@@ -67,8 +73,30 @@ fn write_to_db(entry: NewMessage) -> FutureResult<i64, hyper::Error>{
     futures::future::ok(0)
 }
 
-fn make_post_response(result: Result<i64, hyper::Error>) -> FutureResult<hyper::Response, hyper::Error>{
-    futures::future::ok(Response::new().with_status(StatusCode::NotFound))
+fn make_post_response(result: Result<i64, hyper::Error>, ) -> FutureResult<hyper::Response, hyper::Error>{
+    match result{
+        Ok(timestamp) => {
+            let payload = json!({"timestamp": timestamp}).to_string();
+            let response = Response::new()
+                .with_header(ContentLength(payload.len() as u64))
+                .with_header(ContentType::json())
+                .with_body(payload);
+            debug!("{:?}", response);
+            futures::future::ok(response)
+        },
+        Err(error) => make_error_response(error.description()),
+    }
+}
+
+fn make_error_response(error_message: &str) -> FutureResult<hyper::Response, hyper::Error>{
+    let payload = json!({"error": error_message}).to_string();
+    let response = Response::new()
+        .with_status(StatusCode::InternalServerError)
+        .with_header(ContentLength(payload.len() as u64))
+        .with_header(ContentType::json())
+        .with_body(payload);
+    debug!("{:?}", response);
+    futures::future::ok(response)
 }
 
 
