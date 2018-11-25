@@ -3,16 +3,24 @@ extern crate futures;
 
 #[macro_use]
 extern crate serde_json;
+#[macro_use]
 extern crate log;
+#[macro_use]
 extern crate env_logger;
+#[macro_use]
 extern crate url;
+#[macro_use]
+extern crate serde_derive;
+#[macro_use]
+extern crate diesel;
+
+mod schema;
+mod models;
 
 use std::collections::HashMap;
 use std::error::Error;
 use std::io;
 
-use log::{debug, info};
-use serde_json::json;
 
 use hyper::{Chunk, StatusCode};
 use hyper::Method::{Get, Post};
@@ -56,7 +64,7 @@ impl Service for Microservice{
                 let response = match time_range{
                     Ok(time_range) => make_get_response(query_db(time_range)),
                     Err(error) => make_error_response(&error),
-                }
+                };
                 Box::new(response)
             }
             _ => Box::new(futures::future::ok(
